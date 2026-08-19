@@ -14,6 +14,14 @@ If clients can define GraphQL response shape, that shape can also define a trans
 GraphQL query → projection plan → in-memory evaluation → dynamic descriptor → protobuf bytes → gRPC
 ```
 
+## Current milestone
+
+GraphQL query + catalog schema → `ProjectionPlan` (`internal/compile`).
+
+```bash
+go test ./internal/compile/...
+```
+
 ## Development
 
 Requires Go 1.22 or later.
