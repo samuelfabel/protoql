@@ -1,0 +1,79 @@
+directive @derived(expr: String!) on FIELD_DEFINITION
+directive @source(path: [String!]!) on FIELD_DEFINITION
+directive @aggregate(fn: String!, of: String!) on FIELD_DEFINITION
+
+scalar Date
+scalar DateTime
+scalar Decimal
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  CANCELLED
+}
+
+type Query {
+  customers: [Customer!]!
+  products: [Product!]!
+}
+
+type Customer {
+  id: ID!
+  name: String!
+  birthDate: Date!
+  email: String!
+  address: Address
+  orders: [Order!]!
+  age: Int! @derived(expr: "age(birthDate)")
+  city: String @source(path: ["address", "city"])
+  orderCount: Int! @aggregate(fn: "count", of: "orders")
+  totalSpent: Decimal @aggregate(fn: "sum", of: "orders.total")
+}
+
+type Address {
+  street: String!
+  number: Int!
+  neighborhood: String!
+  city: String!
+  state: String!
+  zipCode: String!
+}
+
+type Order {
+  id: ID!
+  createdAt: DateTime!
+  status: OrderStatus!
+  items: [OrderItem!]!
+  shippingAddress: Address!
+  total: Decimal!
+}
+
+type OrderItem {
+  quantity: Int!
+  unitPrice: Decimal!
+  total: Decimal!
+  product: Product!
+}
+
+type Product {
+  id: ID!
+  name: String!
+  price: Decimal!
+  stock: Int!
+  brand: Brand!
+  category: Category!
+  reviews: [Review!]!
+}
+
+type Brand {
+  name: String!
+}
+
+type Category {
+  name: String!
+}
+
+type Review {
+  rating: Float!
+}
