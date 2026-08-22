@@ -16,7 +16,13 @@ GraphQL query → projection plan → in-memory evaluation → dynamic descripto
 
 ## Current milestone
 
-GraphQL query + catalog schema → `ProjectionPlan` (`internal/compile`).
+In-memory projection engine: `Project(plan, []Customer)` materializes direct `String`/`ID` fields (`internal/engine`).
+
+```bash
+go test ./internal/engine/...
+```
+
+The query compiler lives in `internal/compile`.
 
 ```bash
 go test ./internal/compile/...
