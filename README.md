@@ -16,7 +16,7 @@ GraphQL query → projection plan → in-memory evaluation → dynamic descripto
 
 ## Current milestone
 
-In-memory projection engine: `Project(plan, []Customer)` materializes direct `String`/`ID` fields (`internal/engine`).
+Basic scalar materialization: `Project` maps direct `String`, `ID`, `Int`, `Boolean`, and `Float` bindings to Go values (`internal/engine`).
 
 ```bash
 go test ./internal/engine/...
