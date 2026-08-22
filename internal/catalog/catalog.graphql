@@ -23,6 +23,9 @@ type Customer {
   name: String!
   birthDate: Date!
   email: String!
+  loyaltyPoints: Int!
+  active: Boolean!
+  creditScore: Float!
   address: Address
   orders: [Order!]!
   age: Int! @derived(expr: "age(birthDate)")
