@@ -56,6 +56,54 @@ func TestProject_idAndName(t *testing.T) {
 	}
 }
 
+func TestProject_basicTypes(t *testing.T) {
+	plan, err := compile.Compile(catalog.SDL, `query {
+		customers {
+			id
+			name
+			email
+			loyaltyPoints
+			active
+			creditScore
+		}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := []catalog.Customer{{
+		ID:            "c1",
+		Name:          "Samuel",
+		Email:         "s@example.com",
+		LoyaltyPoints: 120,
+		Active:        true,
+		CreditScore:   98.5,
+	}}
+	got, err := Project(plan, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len=%d", len(got))
+	}
+	rec := got[0]
+	cases := []struct {
+		field string
+		want  any
+	}{
+		{"id", "c1"},
+		{"name", "Samuel"},
+		{"email", "s@example.com"},
+		{"loyaltyPoints", 120},
+		{"active", true},
+		{"creditScore", 98.5},
+	}
+	for _, tc := range cases {
+		if rec[tc.field] != tc.want {
+			t.Errorf("%s = %v (%T), want %v (%T)", tc.field, rec[tc.field], rec[tc.field], tc.want, tc.want)
+		}
+	}
+}
+
 func TestProject_derivedUnsupported(t *testing.T) {
 	plan, err := compile.Compile(catalog.SDL, `query { customers { age } }`)
 	if err != nil {
@@ -68,14 +116,14 @@ func TestProject_derivedUnsupported(t *testing.T) {
 	}
 }
 
-func TestProject_birthDateUnsupported(t *testing.T) {
+func TestProject_birthDateTypeUnsupported(t *testing.T) {
 	plan, err := compile.Compile(catalog.SDL, `query { customers { birthDate } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = Project(plan, []catalog.Customer{{Name: "Samuel"}})
 	var e *Error
-	if !errors.As(err, &e) || e.Code != CodeEngineBindingUnsupported {
+	if !errors.As(err, &e) || e.Code != CodeTypeUnsupported {
 		t.Fatalf("err=%v", err)
 	}
 }
