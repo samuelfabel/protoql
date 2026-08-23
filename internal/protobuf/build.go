@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -21,6 +22,63 @@ const (
 // Field numbers follow plan document order starting at 1 (binding.Index).
 // No .proto source file is written; the descriptor exists only in memory.
 func BuildDescriptor(plan *compile.ProjectionPlan) (protoreflect.MessageDescriptor, error) {
+	desc, _, err := BuildDescriptorWithSet(plan)
+	return desc, err
+}
+
+// BuildDescriptorWithSet returns the root message descriptor and a marshaled FileDescriptorSet.
+func BuildDescriptorWithSet(plan *compile.ProjectionPlan) (protoreflect.MessageDescriptor, []byte, error) {
+	file, err := buildFileProto(plan)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fds := &descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{file}}
+	files, err := protodesc.NewFiles(fds)
+	if err != nil {
+		return nil, nil, descriptorBuildFailed(err.Error())
+	}
+
+	fullName := protoreflect.FullName(packageName + "." + rootMsgName)
+	desc, err := files.FindDescriptorByName(fullName)
+	if err != nil {
+		return nil, nil, descriptorBuildFailed(err.Error())
+	}
+	msg, ok := desc.(protoreflect.MessageDescriptor)
+	if !ok {
+		return nil, nil, descriptorBuildFailed("root is not a message descriptor")
+	}
+
+	raw, err := proto.Marshal(fds)
+	if err != nil {
+		return nil, nil, descriptorBuildFailed(err.Error())
+	}
+	return msg, raw, nil
+}
+
+// DescriptorFromSet loads the Projection message descriptor from a marshaled FileDescriptorSet.
+func DescriptorFromSet(raw []byte) (protoreflect.MessageDescriptor, error) {
+	fds := &descriptorpb.FileDescriptorSet{}
+	if err := proto.Unmarshal(raw, fds); err != nil {
+		return nil, descriptorBuildFailed(err.Error())
+	}
+	files, err := protodesc.NewFiles(fds)
+	if err != nil {
+		return nil, descriptorBuildFailed(err.Error())
+	}
+	fullName := protoreflect.FullName(packageName + "." + rootMsgName)
+	desc, err := files.FindDescriptorByName(fullName)
+	if err != nil {
+		return nil, descriptorBuildFailed(err.Error())
+	}
+	msg, ok := desc.(protoreflect.MessageDescriptor)
+	if !ok {
+		return nil, descriptorBuildFailed("root is not a message descriptor")
+	}
+	return msg, nil
+}
+
+func buildFileProto(plan *compile.ProjectionPlan) (*descriptorpb.FileDescriptorProto, error) {
 	if plan == nil {
 		return nil, descriptorBuildFailed("plan is required")
 	}
@@ -35,28 +93,12 @@ func BuildDescriptor(plan *compile.ProjectionPlan) (protoreflect.MessageDescript
 	}
 	messages = append(messages, root)
 
-	file := &descriptorpb.FileDescriptorProto{
+	return &descriptorpb.FileDescriptorProto{
 		Name:        strPtr(fileName),
 		Package:     strPtr(packageName),
 		Syntax:      strPtr("proto3"),
 		MessageType: messages,
-	}
-
-	files, err := protodesc.NewFiles(&descriptorpb.FileDescriptorSet{File: []*descriptorpb.FileDescriptorProto{file}})
-	if err != nil {
-		return nil, descriptorBuildFailed(err.Error())
-	}
-
-	fullName := protoreflect.FullName(packageName + "." + rootMsgName)
-	desc, err := files.FindDescriptorByName(fullName)
-	if err != nil {
-		return nil, descriptorBuildFailed(err.Error())
-	}
-	msg, ok := desc.(protoreflect.MessageDescriptor)
-	if !ok {
-		return nil, descriptorBuildFailed("root is not a message descriptor")
-	}
-	return msg, nil
+	}, nil
 }
 
 func buildMessage(name string, bindings []compile.FieldBinding, all *[]*descriptorpb.DescriptorProto) (*descriptorpb.DescriptorProto, error) {
