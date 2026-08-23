@@ -5,6 +5,7 @@ import "fmt"
 const (
 	CodeEngineBindingUnsupported = "ENGINE_BINDING_UNSUPPORTED"
 	CodeTypeUnsupported          = "TYPE_UNSUPPORTED"
+	CodeEngineNullViolation      = "ENGINE_NULL_VIOLATION"
 )
 
 // Error is an engine failure with a stable error code.
@@ -26,4 +27,8 @@ func bindingUnsupported(msg string) error {
 
 func typeUnsupported(msg string) error {
 	return &Error{Code: CodeTypeUnsupported, Message: msg}
+}
+
+func nullViolation(msg string) error {
+	return &Error{Code: CodeEngineNullViolation, Message: msg}
 }
