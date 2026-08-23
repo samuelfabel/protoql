@@ -64,9 +64,11 @@ type Product {
   name: String!
   price: Decimal!
   stock: Int!
+  available: Boolean! @derived(expr: "stock > 0")
   brand: Brand!
   category: Category!
   reviews: [Review!]!
+  averageRating: Float @aggregate(fn: "avg", of: "reviews.rating")
 }
 
 type Brand {
