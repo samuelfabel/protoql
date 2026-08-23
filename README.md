@@ -16,10 +16,10 @@ GraphQL query → projection plan → in-memory evaluation → dynamic descripto
 
 ## Current milestone
 
-Aggregations: `count(orders)`, `sum(orders.total)`, and `avg(reviews.rating)` via `KindAggregate` bindings (`internal/engine/aggregate.go`).
+Dynamic Protobuf descriptors: build a message descriptor from a projection plan at runtime (no per-query `.proto`), encode/decode wire format (`internal/protobuf`).
 
 ```bash
-go test ./internal/engine/...
+go test ./internal/protobuf/...
 ```
 
 The query compiler lives in `internal/compile`.
