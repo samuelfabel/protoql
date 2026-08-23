@@ -16,7 +16,7 @@ GraphQL query → projection plan → in-memory evaluation → dynamic descripto
 
 ## Current milestone
 
-Basic scalar materialization: `Project` maps direct `String`, `ID`, `Int`, `Boolean`, and `Float` bindings to Go values (`internal/engine`).
+Aggregations: `count(orders)`, `sum(orders.total)`, and `avg(reviews.rating)` via `KindAggregate` bindings (`internal/engine/aggregate.go`).
 
 ```bash
 go test ./internal/engine/...
