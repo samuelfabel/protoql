@@ -16,10 +16,10 @@ GraphQL query → projection plan → in-memory evaluation → dynamic descripto
 
 ## Current milestone
 
-Dynamic Protobuf descriptors: build a message descriptor from a projection plan at runtime (no per-query `.proto`), encode/decode wire format (`internal/protobuf`).
+gRPC transport: `Execute` RPC accepts a GraphQL query and returns projection wire bytes plus a `FileDescriptorSet` (`internal/transport`).
 
 ```bash
-go test ./internal/protobuf/...
+go test ./internal/transport/...
 ```
 
 The query compiler lives in `internal/compile`.
