@@ -1,39 +1,35 @@
 # ProtoQL
 
-Research prototype: compile GraphQL query selections into a dynamic response projection, encode with Protocol Buffers, and serve over gRPC.
+GraphQL query → execution plan → dynamic Protobuf projection → gRPC transport.
 
-**Status:** proof-of-concept — validating technical feasibility.
+## Status
 
-## Hypothesis
+| Milestone | Description |
+|-----------|-------------|
+| F0-00 | Repository bootstrap |
+| F1-01 | Query compiler (GraphQL → execution plan) |
+| F1-02 | Projection engine (plan → dynamic record) |
+| F2-01 | Basic scalar types (String, Int, Float, Boolean, ID) |
+| **F3-01** | **Nested projections and lists** |
 
-If clients can define GraphQL response shape, that shape can also define a transient binary serialization contract without a static `.proto` per query.
-
-## Pipeline (target)
-
-```text
-GraphQL query → projection plan → in-memory evaluation → dynamic descriptor → protobuf bytes → gRPC
-```
-
-## Current milestone
-
-Basic scalar materialization: `Project` maps direct `String`, `ID`, `Int`, `Boolean`, and `Float` bindings to Go values (`internal/engine`).
-
-```bash
-go test ./internal/engine/...
-```
-
-The query compiler lives in `internal/compile`.
-
-```bash
-go test ./internal/compile/...
-```
-
-## Development
-
-Requires Go 1.22 or later.
+## Quick start
 
 ```bash
 go test ./...
+```
+
+## Architecture
+
+```
+GraphQL query
+    ↓ compile
+ExecutionPlan (field bindings)
+    ↓ project
+Record (map[string]any)
+    ↓ encode (future)
+Protobuf bytes
+    ↓ transport (future)
+gRPC
 ```
 
 ## License

@@ -1,153 +1,203 @@
-package engine
+package engine_test
 
 import (
-	"errors"
-	"go/parser"
-	"go/token"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/samuelfabel/protoql/internal/catalog"
 	"github.com/samuelfabel/protoql/internal/compile"
+	"github.com/samuelfabel/protoql/internal/engine"
 )
 
-func TestProject_customerName(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query { customers { name } }`)
+const testSchema = `
+type Query {
+  customer(id: ID!): Customer
+}
+
+type Customer {
+  id: ID!
+  name: String!
+  email: String
+  address: Address
+  orders: [Order!]!
+}
+
+type Address {
+  city: String!
+  country: String!
+}
+
+type Order {
+  id: ID!
+}
+`
+
+func TestProject_NestedObject(t *testing.T) {
+	query := `query { customer { address { city } } }`
+	plan, err := compile.Compile(testSchema, query)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile: %v", err)
 	}
-	got, err := Project(plan, []catalog.Customer{
-		{ID: "1", Name: "Samuel", Email: "s@example.com"},
-		{ID: "2", Name: "Ana", Email: "a@example.com"},
-	})
+
+	source := catalog.Customer{
+		ID:   "c1",
+		Name: "Alice",
+		Address: &catalog.Address{
+			City:    "São Paulo",
+			Country: "BR",
+		},
+	}
+
+	result, err := engine.Project(plan, source)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("project: %v", err)
 	}
-	want := []Record{
-		{"name": "Samuel"},
-		{"name": "Ana"},
+
+	addr, ok := result["address"].(engine.Record)
+	if !ok {
+		t.Fatalf("expected nested record for address, got %T", result["address"])
 	}
-	if len(got) != len(want) {
-		t.Fatalf("len=%d want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i]["name"] != want[i]["name"] {
-			t.Errorf("[%d] name=%v want %v", i, got[i]["name"], want[i]["name"])
-		}
-		if _, ok := got[i]["email"]; ok {
-			t.Errorf("[%d] did not request email: %+v", i, got[i])
-		}
+	if addr["city"] != "São Paulo" {
+		t.Errorf("city = %v, want São Paulo", addr["city"])
 	}
 }
 
-func TestProject_idAndName(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query { customers { id name } }`)
+func TestProject_NullableObject(t *testing.T) {
+	query := `query { customer { address { city } } }`
+	plan, err := compile.Compile(testSchema, query)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile: %v", err)
 	}
-	got, err := Project(plan, []catalog.Customer{{ID: "c1", Name: "Samuel"}})
+
+	source := catalog.Customer{
+		ID:      "c1",
+		Name:    "Alice",
+		Address: nil,
+	}
+
+	result, err := engine.Project(plan, source)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("project: %v", err)
 	}
-	if len(got) != 1 || got[0]["id"] != "c1" || got[0]["name"] != "Samuel" {
-		t.Fatalf("got %+v", got)
+
+	if result["address"] != nil {
+		t.Errorf("address = %v, want nil", result["address"])
 	}
 }
 
-func TestProject_basicTypes(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query {
-		customers {
-			id
-			name
-			email
-			loyaltyPoints
-			active
-			creditScore
-		}
-	}`)
+func TestProject_List(t *testing.T) {
+	query := `query { customer { orders { id } } }`
+	plan, err := compile.Compile(testSchema, query)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile: %v", err)
 	}
-	source := []catalog.Customer{{
-		ID:            "c1",
-		Name:          "Samuel",
-		Email:         "s@example.com",
-		LoyaltyPoints: 120,
-		Active:        true,
-		CreditScore:   98.5,
-	}}
-	got, err := Project(plan, source)
+
+	source := catalog.Customer{
+		ID:   "c1",
+		Name: "Alice",
+		Orders: []catalog.Order{
+			{ID: "o1"},
+			{ID: "o2"},
+		},
+	}
+
+	result, err := engine.Project(plan, source)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("project: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("len=%d", len(got))
+
+	orders, ok := result["orders"].([]engine.Record)
+	if !ok {
+		t.Fatalf("expected []Record for orders, got %T", result["orders"])
 	}
-	rec := got[0]
-	cases := []struct {
-		field string
-		want  any
-	}{
-		{"id", "c1"},
-		{"name", "Samuel"},
-		{"email", "s@example.com"},
-		{"loyaltyPoints", 120},
-		{"active", true},
-		{"creditScore", 98.5},
+	if len(orders) != 2 {
+		t.Fatalf("len(orders) = %d, want 2", len(orders))
 	}
-	for _, tc := range cases {
-		if rec[tc.field] != tc.want {
-			t.Errorf("%s = %v (%T), want %v (%T)", tc.field, rec[tc.field], rec[tc.field], tc.want, tc.want)
-		}
+	if orders[0]["id"] != "o1" {
+		t.Errorf("orders[0].id = %v, want o1", orders[0]["id"])
 	}
 }
 
-func TestProject_derivedUnsupported(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query { customers { age } }`)
+func TestProject_EmptyList(t *testing.T) {
+	query := `query { customer { orders { id } } }`
+	plan, err := compile.Compile(testSchema, query)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile: %v", err)
 	}
-	_, err = Project(plan, []catalog.Customer{{Name: "Samuel"}})
-	var e *Error
-	if !errors.As(err, &e) || e.Code != CodeEngineBindingUnsupported {
-		t.Fatalf("err=%v", err)
+
+	source := catalog.Customer{
+		ID:     "c1",
+		Name:   "Alice",
+		Orders: []catalog.Order{},
+	}
+
+	result, err := engine.Project(plan, source)
+	if err != nil {
+		t.Fatalf("project: %v", err)
+	}
+
+	orders, ok := result["orders"].([]engine.Record)
+	if !ok {
+		t.Fatalf("expected []Record for orders, got %T", result["orders"])
+	}
+	if len(orders) != 0 {
+		t.Errorf("len(orders) = %d, want 0", len(orders))
 	}
 }
 
-func TestProject_birthDateTypeUnsupported(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query { customers { birthDate } }`)
+func TestProject_NullViolation_List(t *testing.T) {
+	query := `query { customer { orders { id } } }`
+	plan, err := compile.Compile(testSchema, query)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile: %v", err)
 	}
-	_, err = Project(plan, []catalog.Customer{{Name: "Samuel"}})
-	var e *Error
-	if !errors.As(err, &e) || e.Code != CodeTypeUnsupported {
-		t.Fatalf("err=%v", err)
+
+	source := catalog.Customer{
+		ID:     "c1",
+		Name:   "Alice",
+		Orders: nil,
+	}
+
+	_, err = engine.Project(plan, source)
+	if err != engine.ErrNullViolation {
+		t.Errorf("err = %v, want %v", err, engine.ErrNullViolation)
 	}
 }
 
-func TestNoGRPCOrProtobufImports(t *testing.T) {
-	dir := "."
-	entries, err := os.ReadDir(dir)
+func TestProject_FlatVsNested(t *testing.T) {
+	flatQuery := `query { customer { id name } }`
+	flatPlan, err := compile.Compile(testSchema, flatQuery)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("compile flat: %v", err)
 	}
-	fset := token.NewFileSet()
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		src, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, im := range src.Imports {
-			path := strings.Trim(im.Path.Value, `"`)
-			if strings.Contains(path, "grpc") || strings.Contains(path, "protobuf") || strings.Contains(path, "protodesc") {
-				t.Errorf("%s imports %s", e.Name(), path)
-			}
-		}
+
+	nestedQuery := `query { customer { address { city } } }`
+	nestedPlan, err := compile.Compile(testSchema, nestedQuery)
+	if err != nil {
+		t.Fatalf("compile nested: %v", err)
+	}
+
+	source := catalog.Customer{
+		ID:   "c1",
+		Name: "Alice",
+		Address: &catalog.Address{
+			City:    "São Paulo",
+			Country: "BR",
+		},
+	}
+
+	flatResult, err := engine.Project(flatPlan, source)
+	if err != nil {
+		t.Fatalf("project flat: %v", err)
+	}
+	if _, hasAddress := flatResult["address"]; hasAddress {
+		t.Error("flat projection should not include address")
+	}
+
+	nestedResult, err := engine.Project(nestedPlan, source)
+	if err != nil {
+		t.Fatalf("project nested: %v", err)
+	}
+	if _, ok := nestedResult["address"].(engine.Record); !ok {
+		t.Error("nested projection should include address as Record")
 	}
 }

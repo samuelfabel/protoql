@@ -1,201 +1,174 @@
 package compile
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
-	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
-// Compile turns a GraphQL document and schema SDL into a ProjectionPlan.
-func Compile(schemaSDL, query string) (*ProjectionPlan, error) {
-	schema, err := gqlparser.LoadSchema(&ast.Source{Name: "schema.graphql", Input: schemaSDL})
+// Compile compiles a GraphQL query string into an ExecutionPlan.
+func Compile(schema string, query string) (*ExecutionPlan, error) {
+	schemaDoc, err := gqlparser.LoadSchema(&ast.Source{Name: "schema.graphql", Input: schema})
 	if err != nil {
-		return nil, &Error{Code: CodeQueryInvalid, Message: err.Error()}
+		return nil, fmt.Errorf("%w: %v", ErrSchemaInvalid, err)
 	}
 
-	doc, errs := gqlparser.LoadQuery(schema, query)
-	if len(errs) > 0 {
-		return nil, mapGQLErrors(errs)
+	queryDoc, err := gqlparser.LoadQuery(schemaDoc, &ast.Source{Name: "query.graphql", Input: query})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrQueryInvalid, err)
 	}
 
-	op, cerr := selectedOperation(doc)
-	if cerr != nil {
-		return nil, cerr
+	if len(queryDoc.Operations) != 1 {
+		return nil, fmt.Errorf("%w: expected exactly one operation", ErrQueryInvalid)
 	}
 
-	if len(op.SelectionSet) != 1 {
-		return nil, &Error{Code: CodeQueryInvalid, Message: "query must request exactly one root field"}
-	}
-
-	field, ok := op.SelectionSet[0].(*ast.Field)
-	if !ok {
-		return nil, &Error{Code: CodeQueryInvalid, Message: "root fragments are not supported in this milestone"}
-	}
-
-	bindings, cerr := bindSelectionSet(field.SelectionSet)
-	if cerr != nil {
-		return nil, cerr
-	}
-
-	return &ProjectionPlan{RootField: field.Name, Bindings: bindings}, nil
-}
-
-func selectedOperation(doc *ast.QueryDocument) (*ast.OperationDefinition, error) {
-	if len(doc.Operations) == 0 {
-		return nil, &Error{Code: CodeQueryInvalid, Message: "document has no operation"}
-	}
-	if len(doc.Operations) > 1 {
-		return nil, &Error{Code: CodeQueryInvalid, Message: "only one operation per document is supported in this milestone"}
-	}
-	op := doc.Operations[0]
+	op := queryDoc.Operations[0]
 	if op.Operation != ast.Query {
-		return nil, &Error{Code: CodeQueryInvalid, Message: "only query operations are supported in this milestone"}
+		return nil, fmt.Errorf("%w: only query operations are supported", ErrQueryInvalid)
 	}
-	return op, nil
+
+	rootType := schemaDoc.Query
+	if rootType == nil {
+		return nil, fmt.Errorf("%w: schema has no Query type", ErrSchemaInvalid)
+	}
+
+	fields, err := compileSelectionSet(schemaDoc, rootType, op.SelectionSet, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return &ExecutionPlan{
+		RootType: rootType.Name,
+		Fields:   fields,
+	}, nil
 }
 
-func bindSelectionSet(set ast.SelectionSet) ([]FieldBinding, error) {
-	out := make([]FieldBinding, 0, len(set))
-	index := 1
+func compileSelectionSet(schema *ast.Schema, parentType *ast.Definition, set ast.SelectionSet, prefix string) ([]FieldBinding, error) {
+	var bindings []FieldBinding
+
 	for _, sel := range set {
-		field, ok := sel.(*ast.Field)
-		if !ok {
-			return nil, &Error{Code: CodeQueryInvalid, Message: "only fields are supported (no fragments) in this milestone"}
+		switch node := sel.(type) {
+		case *ast.Field:
+			fieldDef := parentType.Fields.ForName(node.Name)
+			if fieldDef == nil {
+				return nil, fmt.Errorf("%w: field %q not found on type %q", ErrFieldNotFound, node.Name, parentType.Name)
+			}
+
+			if len(node.Arguments) > 0 {
+				return nil, fmt.Errorf("%w: field %q has arguments (not supported)", ErrQueryInvalid, node.Name)
+			}
+
+			outputName := node.Alias
+			if outputName == "" {
+				outputName = node.Name
+			}
+
+			path := outputName
+			if prefix != "" {
+				path = prefix + "." + outputName
+			}
+
+			binding := FieldBinding{
+				GraphQLName: node.Name,
+				OutputName:  outputName,
+				Path:        path,
+				Nullable:    fieldNullable(fieldDef.Type),
+			}
+
+			if len(node.SelectionSet) > 0 {
+				childType, err := resolveNamedType(schema, fieldDef.Type)
+				if err != nil {
+					return nil, err
+				}
+				if childType.Kind != ast.Object {
+					return nil, fmt.Errorf("%w: field %q is not an object type", ErrQueryInvalid, node.Name)
+				}
+
+				children, err := compileSelectionSet(schema, childType, node.SelectionSet, path)
+				if err != nil {
+					return nil, err
+				}
+				binding.Children = children
+				binding.Kind = KindPath
+			} else if isListType(fieldDef.Type) {
+				binding.Kind = KindList
+			} else {
+				binding.Kind = KindScalar
+			}
+
+			bindings = append(bindings, binding)
+
+		case *ast.InlineFragment, *ast.FragmentSpread:
+			return nil, fmt.Errorf("%w: fragments are not supported", ErrQueryInvalid)
 		}
-		b, err := bindField(field, index)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, b)
-		index++
 	}
-	return out, nil
+
+	return bindings, nil
 }
 
-func bindField(field *ast.Field, index int) (FieldBinding, error) {
-	def := field.Definition
-	if def == nil {
-		return FieldBinding{}, &Error{Code: CodeQueryFieldUnknown, Message: field.Name}
-	}
-
-	name := field.Alias
-	if name == "" {
-		name = field.Name
-	}
-
-	b := FieldBinding{
-		Index:    index,
-		Name:     name,
-		TypeName: namedType(def.Type),
-		Kind:     classify(def, len(field.SelectionSet) > 0),
-	}
-
-	if d := def.Directives.ForName("derived"); d != nil {
-		if arg := d.Arguments.ForName("expr"); arg != nil && arg.Value != nil {
-			b.Expr = arg.Value.Raw
-		}
-	}
-	if d := def.Directives.ForName("source"); d != nil {
-		if arg := d.Arguments.ForName("path"); arg != nil && arg.Value != nil {
-			b.Path = stringList(arg.Value)
-		}
-	}
-	if d := def.Directives.ForName("aggregate"); d != nil {
-		if fn := d.Arguments.ForName("fn"); fn != nil && fn.Value != nil {
-			b.Aggregate = fn.Value.Raw
-		}
-		if of := d.Arguments.ForName("of"); of != nil && of.Value != nil {
-			b.AggregateOf = of.Value.Raw
-		}
-	}
-
-	if len(field.SelectionSet) > 0 {
-		children, err := bindSelectionSet(field.SelectionSet)
-		if err != nil {
-			return FieldBinding{}, err
-		}
-		b.Children = children
-	}
-
-	return b, nil
-}
-
-func classify(def *ast.FieldDefinition, hasChildren bool) BindingKind {
-	if def.Directives.ForName("aggregate") != nil {
-		return KindAggregate
-	}
-	if def.Directives.ForName("derived") != nil {
-		return KindDerived
-	}
-	if def.Directives.ForName("source") != nil {
-		return KindPath
-	}
-	if isList(def.Type) {
-		return KindList
-	}
-	if hasChildren {
-		return KindPath
-	}
-	return KindDirect
-}
-
-func isList(t *ast.Type) bool {
-	for t != nil {
-		if t.NamedType == "" && t.Elem != nil {
-			return true
-		}
+func resolveNamedType(schema *ast.Schema, t *ast.Type) (*ast.Definition, error) {
+	for t.NamedType == "" {
 		t = t.Elem
+	}
+	def := schema.Types[t.NamedType]
+	if def == nil {
+		return nil, fmt.Errorf("%w: type %q not found", ErrSchemaInvalid, t.NamedType)
+	}
+	return def, nil
+}
+
+func isListType(t *ast.Type) bool {
+	for t.Elem != nil {
+		if t.Elem.NamedType == "" {
+			t = t.Elem
+			continue
+		}
+		return t.Elem.NamedType == ""
 	}
 	return false
 }
 
-func namedType(t *ast.Type) string {
-	for t != nil {
-		if t.NamedType != "" {
-			return t.NamedType
-		}
-		t = t.Elem
+func fieldNullable(t *ast.Type) bool {
+	if t == nil {
+		return false
 	}
-	return ""
-}
-
-func stringList(v *ast.Value) []string {
-	if v == nil {
-		return nil
+	if t.NonNull {
+		return false
 	}
-	if v.Kind == ast.ListValue {
-		out := make([]string, 0, len(v.Children))
-		for _, c := range v.Children {
-			if c.Value != nil {
-				out = append(out, c.Value.Raw)
-			}
-		}
-		return out
-	}
-	if v.Raw != "" {
-		return []string{v.Raw}
-	}
-	return nil
-}
-
-func mapGQLErrors(errs gqlerror.List) error {
-	for _, e := range errs {
-		if e == nil {
-			continue
-		}
-		if isUnknownField(e) {
-			return &Error{Code: CodeQueryFieldUnknown, Message: e.Error()}
-		}
-	}
-	return &Error{Code: CodeQueryInvalid, Message: errs.Error()}
-}
-
-func isUnknownField(e *gqlerror.Error) bool {
-	if e.Rule == "FieldsOnCorrectType" {
+	if t.NamedType != "" {
 		return true
 	}
-	m := strings.ToLower(e.Message)
-	return strings.Contains(m, "cannot query field")
+	return fieldNullable(t.Elem)
+}
+
+// FieldPath returns the dot-separated path for a binding (used by the engine).
+func FieldPath(b FieldBinding) string {
+	return b.Path
+}
+
+// StructFieldName converts a GraphQL field name to the expected Go struct field name (exported).
+func StructFieldName(graphQLName string) string {
+	if graphQLName == "" {
+		return ""
+	}
+	return strings.ToUpper(graphQLName[:1]) + graphQLName[1:]
+}
+
+// GoFieldByGraphQLName looks up a struct field by GraphQL name using reflection.
+func GoFieldByGraphQLName(v reflect.Value, graphQLName string) (reflect.Value, bool) {
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return reflect.Value{}, false
+	}
+	name := StructFieldName(graphQLName)
+	f := v.FieldByName(name)
+	if !f.IsValid() {
+		return reflect.Value{}, false
+	}
+	return f, true
 }

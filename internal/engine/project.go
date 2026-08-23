@@ -1,97 +1,150 @@
 package engine
 
 import (
-	"github.com/samuelfabel/protoql/internal/catalog"
+	"reflect"
+
 	"github.com/samuelfabel/protoql/internal/compile"
 )
 
-// Record is one projected row in memory.
+// Record is a dynamic projection result (map of field name to value).
 type Record map[string]any
 
-// Project applies a ProjectionPlan to an in-memory slice of Customer.
-// Direct bindings for String, ID, Int, Boolean, and Float are materialized.
-func Project(plan *compile.ProjectionPlan, source []catalog.Customer) ([]Record, error) {
+// Project applies an ExecutionPlan to a source value and returns a Record.
+func Project(plan *compile.ExecutionPlan, source any) (Record, error) {
 	if plan == nil {
-		return nil, bindingUnsupported("plan is required")
+		return nil, ErrPlanNil
 	}
 
-	out := make([]Record, 0, len(source))
-	for i := range source {
-		rec, err := projectCustomer(plan.Bindings, source[i])
+	src := reflect.ValueOf(source)
+	if src.Kind() == reflect.Ptr {
+		if src.IsNil() {
+			return nil, ErrSourceNil
+		}
+		src = src.Elem()
+	}
+
+	if src.Kind() != reflect.Struct {
+		return nil, ErrSourceNotStruct
+	}
+
+	out := make(Record, len(plan.Fields))
+	for _, binding := range plan.Fields {
+		val, err := projectField(src, binding)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, rec)
+		out[binding.OutputName] = val
 	}
 	return out, nil
 }
 
-func projectCustomer(bindings []compile.FieldBinding, c catalog.Customer) (Record, error) {
-	rec := make(Record, len(bindings))
-	for _, b := range bindings {
-		if b.Kind != compile.KindDirect {
-			return nil, bindingUnsupported("binding " + b.Name + " kind=" + string(b.Kind))
+func projectField(src reflect.Value, binding compile.FieldBinding) (any, error) {
+	switch binding.Kind {
+	case compile.KindScalar:
+		return projectScalar(src, binding)
+	case compile.KindPath:
+		return projectPath(src, binding)
+	case compile.KindList:
+		return projectList(src, binding)
+	default:
+		return projectScalar(src, binding)
+	}
+}
+
+func projectScalar(src reflect.Value, binding compile.FieldBinding) (any, error) {
+	field, ok := compile.GoFieldByGraphQLName(src, binding.GraphQLName)
+	if !ok {
+		return nil, ErrFieldNotFound
+	}
+
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			if binding.Nullable {
+				return nil, nil
+			}
+			return nil, ErrNullViolation
 		}
-		v, err := directValue(c, b.Name, b.TypeName)
+		field = field.Elem()
+	}
+
+	return field.Interface(), nil
+}
+
+func projectPath(src reflect.Value, binding compile.FieldBinding) (any, error) {
+	field, ok := compile.GoFieldByGraphQLName(src, binding.GraphQLName)
+	if !ok {
+		return nil, ErrFieldNotFound
+	}
+
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			if binding.Nullable {
+				return nil, nil
+			}
+			return nil, ErrNullViolation
+		}
+		field = field.Elem()
+	}
+
+	if field.Kind() != reflect.Struct {
+		return nil, ErrSourceNotStruct
+	}
+
+	out := make(Record, len(binding.Children))
+	for _, child := range binding.Children {
+		val, err := projectField(field, child)
 		if err != nil {
 			return nil, err
 		}
-		rec[b.Name] = v
+		out[child.OutputName] = val
 	}
-	return rec, nil
+	return out, nil
 }
 
-func directValue(c catalog.Customer, graphqlName, typeName string) (any, error) {
-	switch typeName {
-	case "String", "ID":
-		return directString(c, graphqlName)
-	case "Int":
-		return directInt(c, graphqlName)
-	case "Boolean":
-		return directBool(c, graphqlName)
-	case "Float":
-		return directFloat(c, graphqlName)
-	default:
-		return nil, typeUnsupported("type " + typeName + " for field " + graphqlName)
+func projectList(src reflect.Value, binding compile.FieldBinding) (any, error) {
+	field, ok := compile.GoFieldByGraphQLName(src, binding.GraphQLName)
+	if !ok {
+		return nil, ErrFieldNotFound
 	}
-}
 
-func directString(c catalog.Customer, graphqlName string) (string, error) {
-	switch graphqlName {
-	case "id":
-		return c.ID, nil
-	case "name":
-		return c.Name, nil
-	case "email":
-		return c.Email, nil
-	default:
-		return "", bindingUnsupported("direct field " + graphqlName)
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			if binding.Nullable {
+				return nil, nil
+			}
+			return nil, ErrNullViolation
+		}
+		field = field.Elem()
 	}
-}
 
-func directInt(c catalog.Customer, graphqlName string) (int, error) {
-	switch graphqlName {
-	case "loyaltyPoints":
-		return c.LoyaltyPoints, nil
-	default:
-		return 0, bindingUnsupported("direct field " + graphqlName)
+	if field.Kind() != reflect.Slice && field.Kind() != reflect.Array {
+		return nil, ErrSourceNotSlice
 	}
-}
 
-func directBool(c catalog.Customer, graphqlName string) (bool, error) {
-	switch graphqlName {
-	case "active":
-		return c.Active, nil
-	default:
-		return false, bindingUnsupported("direct field " + graphqlName)
+	if field.IsNil() {
+		if binding.Nullable {
+			return nil, nil
+		}
+		return nil, ErrNullViolation
 	}
-}
 
-func directFloat(c catalog.Customer, graphqlName string) (float64, error) {
-	switch graphqlName {
-	case "creditScore":
-		return c.CreditScore, nil
-	default:
-		return 0, bindingUnsupported("direct field " + graphqlName)
+	if len(binding.Children) == 0 {
+		return nil, ErrListNeedsSelection
 	}
+
+	elemBinding := binding.Children[0]
+	result := make([]Record, field.Len())
+	for i := 0; i < field.Len(); i++ {
+		elem := field.Index(i)
+		val, err := projectField(elem, elemBinding)
+		if err != nil {
+			return nil, err
+		}
+		rec, ok := val.(Record)
+		if !ok {
+			return nil, ErrSourceNotStruct
+		}
+		result[i] = rec
+	}
+	return result, nil
 }
