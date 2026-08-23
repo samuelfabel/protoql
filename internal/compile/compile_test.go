@@ -105,3 +105,23 @@ func TestCompile_distinguishesDirectDerivedPathAggregate(t *testing.T) {
 		t.Errorf("orders children = %+v", orders.Children)
 	}
 }
+
+func TestCompile_nullableFlags(t *testing.T) {
+	plan, err := Compile(catalog.SDL, `query { customers { name address { city } orders { id } } }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]FieldBinding{}
+	for _, b := range plan.Bindings {
+		byName[b.Name] = b
+	}
+	if byName["name"].Nullable {
+		t.Error("name should be non-null")
+	}
+	if !byName["address"].Nullable {
+		t.Error("address should be nullable")
+	}
+	if byName["orders"].Nullable {
+		t.Error("orders should be non-null")
+	}
+}
