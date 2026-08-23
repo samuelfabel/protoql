@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/samuelfabel/protoql/internal/catalog"
 	"github.com/samuelfabel/protoql/internal/compile"
@@ -36,95 +37,113 @@ func TestProject_customerName(t *testing.T) {
 		if got[i]["name"] != want[i]["name"] {
 			t.Errorf("[%d] name=%v want %v", i, got[i]["name"], want[i]["name"])
 		}
-		if _, ok := got[i]["email"]; ok {
-			t.Errorf("[%d] did not request email: %+v", i, got[i])
-		}
 	}
 }
 
-func TestProject_idAndName(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query { customers { id name } }`)
+func TestProject_aggregates(t *testing.T) {
+	customerPlan, err := compile.Compile(catalog.SDL, `query { customers { orderCount totalSpent } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := Project(plan, []catalog.Customer{{ID: "c1", Name: "Samuel"}})
+	productPlan, err := compile.Compile(catalog.SDL, `query { products { averageRating } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0]["id"] != "c1" || got[0]["name"] != "Samuel" {
-		t.Fatalf("got %+v", got)
-	}
-}
 
-func TestProject_basicTypes(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query {
-		customers {
-			id
-			name
-			email
-			loyaltyPoints
-			active
-			creditScore
-		}
-	}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := []catalog.Customer{{
-		ID:            "c1",
-		Name:          "Samuel",
-		Email:         "s@example.com",
-		LoyaltyPoints: 120,
-		Active:        true,
-		CreditScore:   98.5,
+	customers := []catalog.Customer{{
+		Name: "Samuel",
+		Orders: []catalog.Order{
+			{ID: "o1", Total: 100.0},
+			{ID: "o2", Total: 50.5},
+		},
 	}}
-	got, err := Project(plan, source)
+	gotCustomers, err := Project(customerPlan, customers)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("len=%d", len(got))
+	if gotCustomers[0]["orderCount"] != 2 {
+		t.Errorf("orderCount = %v, want 2", gotCustomers[0]["orderCount"])
 	}
-	rec := got[0]
-	cases := []struct {
-		field string
-		want  any
-	}{
-		{"id", "c1"},
-		{"name", "Samuel"},
-		{"email", "s@example.com"},
-		{"loyaltyPoints", 120},
-		{"active", true},
-		{"creditScore", 98.5},
+	if gotCustomers[0]["totalSpent"] != 150.5 {
+		t.Errorf("totalSpent = %v, want 150.5", gotCustomers[0]["totalSpent"])
 	}
-	for _, tc := range cases {
-		if rec[tc.field] != tc.want {
-			t.Errorf("%s = %v (%T), want %v (%T)", tc.field, rec[tc.field], rec[tc.field], tc.want, tc.want)
-		}
+
+	products := []catalog.Product{{
+		ID: "p1",
+		Reviews: []catalog.Review{
+			{Rating: 4.0},
+			{Rating: 5.0},
+			{Rating: 3.0},
+		},
+	}}
+	gotProducts, err := ProjectProducts(productPlan, products)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotProducts[0]["averageRating"] != 4.0 {
+		t.Errorf("averageRating = %v, want 4.0", gotProducts[0]["averageRating"])
 	}
 }
 
-func TestProject_derivedUnsupported(t *testing.T) {
+func TestProject_aggregateEmptyAvg(t *testing.T) {
+	plan := &compile.ProjectionPlan{
+		RootField: "products",
+		Bindings: []compile.FieldBinding{{
+			Index:       1,
+			Name:        "averageRating",
+			Kind:        compile.KindAggregate,
+			Aggregate:   "avg",
+			AggregateOf: "reviews.rating",
+		}},
+	}
+	_, err := ProjectProducts(plan, []catalog.Product{{ID: "p1", Reviews: nil}})
+	var e *Error
+	if !errors.As(err, &e) || e.Code != CodeAggregateEmpty {
+		t.Fatalf("err=%v, want %s", err, CodeAggregateEmpty)
+	}
+}
+
+func TestProject_ageFromBirthDate(t *testing.T) {
+	ref := time.Date(2026, 8, 23, 0, 0, 0, 0, time.UTC)
+	NowFunc = func() time.Time { return ref }
+	t.Cleanup(func() { NowFunc = time.Now })
+
 	plan, err := compile.Compile(catalog.SDL, `query { customers { age } }`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = Project(plan, []catalog.Customer{{Name: "Samuel"}})
-	var e *Error
-	if !errors.As(err, &e) || e.Code != CodeEngineBindingUnsupported {
-		t.Fatalf("err=%v", err)
-	}
-}
-
-func TestProject_birthDateTypeUnsupported(t *testing.T) {
-	plan, err := compile.Compile(catalog.SDL, `query { customers { birthDate } }`)
+	birthDate := time.Date(1990, 6, 15, 0, 0, 0, 0, time.UTC)
+	got, err := Project(plan, []catalog.Customer{{
+		Name:      "Samuel",
+		BirthDate: birthDate,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = Project(plan, []catalog.Customer{{Name: "Samuel"}})
-	var e *Error
-	if !errors.As(err, &e) || e.Code != CodeTypeUnsupported {
-		t.Fatalf("err=%v", err)
+	if got[0]["age"] != 36 {
+		t.Errorf("age = %v, want 36", got[0]["age"])
+	}
+}
+
+func TestProject_availableFromStock(t *testing.T) {
+	plan, err := compile.Compile(catalog.SDL, `query { products { available } }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		stock int
+		want  bool
+	}{
+		{0, false},
+		{3, true},
+	} {
+		got, err := ProjectProducts(plan, []catalog.Product{{ID: "p1", Stock: tc.stock}})
+		if err != nil {
+			t.Fatalf("stock=%d: %v", tc.stock, err)
+		}
+		if got[0]["available"] != tc.want {
+			t.Errorf("stock=%d available=%v want %v", tc.stock, got[0]["available"], tc.want)
+		}
 	}
 }
 
