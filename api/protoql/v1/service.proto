@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package protoql.v1;
+
+option go_package = "github.com/samuelfabel/protoql/internal/transport/v1;transportv1";
+
+// ProtoQL is the POC gRPC service: GraphQL document in, projection bytes out.
+service ProtoQL {
+  // Execute compiles the query, projects in-memory fixtures, and returns
+  // wire bytes plus the FileDescriptorSet for the same projection.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+}
+
+message ExecuteRequest {
+  // GraphQL query document (single query operation).
+  string query = 1;
+}
+
+message ExecuteResponse {
+  // Protobuf wire encoding of the first projected row.
+  bytes payload = 1;
+  // Serialized google.protobuf.FileDescriptorSet for decoding payload.
+  bytes file_descriptor_set = 2;
+}
