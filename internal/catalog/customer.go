@@ -11,5 +11,6 @@ type Customer struct {
 	LoyaltyPoints int
 	Active        bool
 	CreditScore   float64
+	Address       *Address
 	Orders        []Order
 }
