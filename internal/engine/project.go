@@ -9,7 +9,6 @@ import (
 type Record map[string]any
 
 // Project applies a ProjectionPlan to an in-memory slice of Customer.
-// Direct bindings for String, ID, Int, Boolean, and Float are materialized.
 func Project(plan *compile.ProjectionPlan, source []catalog.Customer) ([]Record, error) {
 	if plan == nil {
 		return nil, bindingUnsupported("plan is required")
@@ -29,16 +28,91 @@ func Project(plan *compile.ProjectionPlan, source []catalog.Customer) ([]Record,
 func projectCustomer(bindings []compile.FieldBinding, c catalog.Customer) (Record, error) {
 	rec := make(Record, len(bindings))
 	for _, b := range bindings {
-		if b.Kind != compile.KindDirect {
-			return nil, bindingUnsupported("binding " + b.Name + " kind=" + string(b.Kind))
-		}
-		v, err := directValue(c, b.Name, b.TypeName)
+		v, err := projectCustomerBinding(c, b)
 		if err != nil {
 			return nil, err
 		}
 		rec[b.Name] = v
 	}
 	return rec, nil
+}
+
+func projectCustomerBinding(c catalog.Customer, b compile.FieldBinding) (any, error) {
+	switch b.Kind {
+	case compile.KindDirect:
+		return directValue(c, b.Name, b.TypeName)
+	case compile.KindDerived:
+		return evalDerivedCustomer(b.Expr, c)
+	case compile.KindAggregate:
+		return evalAggregateCustomer(b.Aggregate, b.AggregateOf, c)
+	default:
+		return nil, bindingUnsupported("binding " + b.Name + " kind=" + string(b.Kind))
+	}
+}
+
+// ProjectProducts applies a ProjectionPlan to an in-memory slice of Product.
+func ProjectProducts(plan *compile.ProjectionPlan, source []catalog.Product) ([]Record, error) {
+	if plan == nil {
+		return nil, bindingUnsupported("plan is required")
+	}
+
+	out := make([]Record, 0, len(source))
+	for i := range source {
+		rec, err := projectProduct(plan.Bindings, source[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, nil
+}
+
+func projectProduct(bindings []compile.FieldBinding, p catalog.Product) (Record, error) {
+	rec := make(Record, len(bindings))
+	for _, b := range bindings {
+		v, err := projectProductBinding(p, b)
+		if err != nil {
+			return nil, err
+		}
+		rec[b.Name] = v
+	}
+	return rec, nil
+}
+
+func projectProductBinding(p catalog.Product, b compile.FieldBinding) (any, error) {
+	switch b.Kind {
+	case compile.KindDirect:
+		return directProductValue(p, b.Name, b.TypeName)
+	case compile.KindDerived:
+		return evalDerivedProduct(b.Expr, p)
+	case compile.KindAggregate:
+		return evalAggregateProduct(b.Aggregate, b.AggregateOf, p)
+	default:
+		return nil, bindingUnsupported("binding " + b.Name + " kind=" + string(b.Kind))
+	}
+}
+
+func directProductValue(p catalog.Product, graphqlName, typeName string) (any, error) {
+	switch typeName {
+	case "String", "ID":
+		switch graphqlName {
+		case "id":
+			return p.ID, nil
+		case "name":
+			return p.Name, nil
+		default:
+			return "", bindingUnsupported("direct field " + graphqlName)
+		}
+	case "Int":
+		switch graphqlName {
+		case "stock":
+			return p.Stock, nil
+		default:
+			return 0, bindingUnsupported("direct field " + graphqlName)
+		}
+	default:
+		return nil, typeUnsupported("type " + typeName + " for field " + graphqlName)
+	}
 }
 
 func directValue(c catalog.Customer, graphqlName, typeName string) (any, error) {
