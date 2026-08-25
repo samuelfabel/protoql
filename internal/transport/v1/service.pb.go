@@ -1,1 +1,1 @@
-LOAD_FROM_JSON_FILE
+@file:/tmp/cou_content.go
