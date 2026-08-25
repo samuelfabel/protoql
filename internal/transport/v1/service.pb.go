@@ -19,7 +19,7 @@ const (
 	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
-)
+}
 
 // ExecuteRequest describes one or more operations; the POC accepts exactly one query.
 type ExecuteRequest struct {
@@ -319,10 +319,10 @@ const file_protoql_v1_service_proto_rawDesc = "" +
 	"\x06result\x18\x03 \x003(\v2\x17.protoql.v1.ResultFieldR\x06result\"5\n" +
 	"\tParameter\x12\x12\n" +
 	"\x04name\x18\x01 \x001(\tR\x04name\x12\x14\n" +
-	"\x05value\x18\x02 \x001(\tR\x05value\"~\n" +
+	"\x005value\x18\x02 \x001(\tR\x005value\"~\n" +
 	"\vResultField\x12\x12\n" +
-	"\x04name\x18\x01 \x001(\tR\x04name\x12\x1b\n" +
-	"\x06parser\x18\x02 \x001(\tH\x00R\x06parser\x88\x01\x01\x123\n" +
+	"\x004name\x18\x01 \x001(\tR\x004name\x12\x1b\n" +
+	"\x006parser\x18\x02 \x001(\tH\x00R\x006parser\x88\x01\x01\x123\n" +
 	"\bchildren\x18\x03 \x003(\v2\x17.protoql.v1.ResultFieldR\bchildrenB\t\n" +
 	"\a_parser\"[\n" +
 	"\x0fExecuteResponse\x12\x18\n" +
