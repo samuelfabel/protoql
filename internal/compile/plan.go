@@ -17,6 +17,7 @@ type FieldBinding struct {
 	Name        string         `json:"name"`
 	Kind        BindingKind    `json:"kind"`
 	TypeName    string         `json:"typeName,omitempty"`
+	Nullable    bool           `json:"nullable,omitempty"`
 	Path        []string       `json:"path,omitempty"`
 	Expr        string         `json:"expr,omitempty"`
 	Aggregate   string         `json:"aggregate,omitempty"`
