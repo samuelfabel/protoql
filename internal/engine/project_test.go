@@ -341,3 +341,4 @@ func TestProject_FlatVsNested(t *testing.T) {
 		t.Errorf("nested address type = %T, want Record", nested[0]["address"])
 	}
 }
+
