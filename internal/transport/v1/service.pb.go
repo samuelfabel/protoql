@@ -312,7 +312,7 @@ const file_protoql_v1_service_proto_rawDesc = "" +
 	"\aqueries\x18\x01 \x03(\v2\x15.protoql.v1.OperationR\aqueries\x123\n" +
 	"\tmutations\x18\x02 \x003(\v2\x15.protoql.v1.OperationR\tmutations\"\x87\x01\n" +
 	"\tOperation\x12\x12\n" +
-	"\x04name\x18\x01 \x001(\tR\x04name\x125\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
 	"\n" +
 	"parameters\x18\x02 \x003(\v2\x15.protoql.v1.ParameterR\n" +
 	"parameters\x12/\n" +
@@ -347,7 +347,7 @@ var file_protoql_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_protoql_v1_service_proto_goTypes = []any{
 	(*ExecuteRequest)(nil),  // 0: protoql.v1.ExecuteRequest
 	(*Operation)(nil),       // 1: protoql.v1.Operation
-	(*Parameter)(nil),     // 2: protoql.v1.Parameter
+	(*Parameter)(nil),       // 2: protoql.v1.Parameter
 	(*ResultField)(nil),     // 3: protoql.v1.ResultField
 	(*ExecuteResponse)(nil), // 4: protoql.v1.ExecuteResponse
 }
