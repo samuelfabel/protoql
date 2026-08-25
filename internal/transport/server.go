@@ -48,7 +48,7 @@ func (s *Server) Execute(ctx context.Context, req *transportv1.ExecuteRequest) (
 		return nil, status.Errorf(codes.Internal, "%s: %v", CodeRPCEngineFailed, err)
 	}
 	if len(rows) == 0 {
-		return nil, status.Errorf(codes.Internal, "%s: %v", CodeRPCEngineFailed, err)
+		return nil, status.Errorf(codes.Internal, "%s: empty projection", CodeRPCEngineFailed)
 	}
 
 	desc, fds, err := protobuf.BuildDescriptorWithSet(plan)
