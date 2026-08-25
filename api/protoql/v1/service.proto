@@ -4,16 +4,36 @@ package protoql.v1;
 
 option go_package = "github.com/samuelfabel/protoql/internal/transport/v1;transportv1";
 
-// ProtoQL is the POC gRPC service: GraphQL document in, projection bytes out.
+// ProtoQL is the POC gRPC service: typed request DSL in, dynamic projection bytes out.
 service ProtoQL {
-  // Execute compiles the query, projects in-memory fixtures, and returns
-  // wire bytes plus the FileDescriptorSet for the same projection.
+  // Execute compiles the request DSL, projects in-memory fixtures, and returns
+  // wire bytes plus the FileDescriptorSet for the requested result shape.
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
 }
 
+// ExecuteRequest describes one or more operations; the POC accepts exactly one query.
 message ExecuteRequest {
-  // GraphQL query document (single query operation).
-  string query = 1;
+  repeated Operation queries = 1;
+  repeated Operation mutations = 2;
+}
+
+message Operation {
+  // Root GraphQL field name (e.g. "customers", "products").
+  string name = 1;
+  repeated Parameter parameters = 2;
+  // Projection shape — drives dynamic response descriptor and payload.
+  repeated ResultField result = 3;
+}
+
+message Parameter {
+  string name = 1;
+  string value = 2;
+}
+
+message ResultField {
+  string name = 1;
+  optional string parser = 2;
+  repeated ResultField children = 3;
 }
 
 message ExecuteResponse {
