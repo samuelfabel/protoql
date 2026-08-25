@@ -309,7 +309,7 @@ const file_protoql_v1_service_proto_rawDesc = "" +
 	"\x18protoql/v1/service.proto\x12\n" +
 	"protoql.v1\"v\n" +
 	"\x0eExecuteRequest\x12/\n" +
-	"\aqueries\x18\x01 \x003(\v2\x15.protoql.v1.OperationR\aqueries\x123\n" +
+	"\aqueries\x18\x01 \x03(\v2\x15.protoql.v1.OperationR\aqueries\x123\n" +
 	"\tmutations\x18\x02 \x003(\v2\x15.protoql.v1.OperationR\tmutations\"\x87\x01\n" +
 	"\tOperation\x12\x12\n" +
 	"\x04name\x18\x01 \x001(\tR\x04name\x125\n" +
