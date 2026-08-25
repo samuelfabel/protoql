@@ -19,7 +19,7 @@ const (
 	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
-}
+)
 
 // ExecuteRequest describes one or more operations; the POC accepts exactly one query.
 type ExecuteRequest struct {
@@ -318,7 +318,7 @@ const file_protoql_v1_service_proto_rawDesc = "" +
 	"parameters\x12/\n" +
 	"\x06result\x18\x03 \x003(\v2\x17.protoql.v1.ResultFieldR\x06result\"5\n" +
 	"\tParameter\x12\x12\n" +
-	"\x04name\x18\x01 \x001(\tR\x04name\x12\x14\n" +
+	"\x004name\x18\x01 \x001(\tR\x004name\x12\x14\n" +
 	"\x005value\x18\x02 \x001(\tR\x005value\"~\n" +
 	"\vResultField\x12\x12\n" +
 	"\x004name\x18\x01 \x001(\tR\x004name\x12\x1b\n" +
@@ -347,7 +347,7 @@ var file_protoql_v1_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_protoql_v1_service_proto_goTypes = []any{
 	(*ExecuteRequest)(nil),  // 0: protoql.v1.ExecuteRequest
 	(*Operation)(nil),       // 1: protoql.v1.Operation
-	(*Parameter)(nil),       // 2: protoql.v1.Parameter
+	(*Parameter)(nil),     // 2: protoql.v1.Parameter
 	(*ResultField)(nil),     // 3: protoql.v1.ResultField
 	(*ExecuteResponse)(nil), // 4: protoql.v1.ExecuteResponse
 }
