@@ -1,0 +1,26 @@
+const file_protoql_v1_service_proto_rawDesc = "" +
+	"\n" +
+	"\x18protoql/v1/service.proto\x12\n" +
+	"protoql.v1\"v\n" +
+	"\x0eExecuteRequest\x12/\n" +
+	"\aqueries\x18\x01 \x03(\v2\x15.protoql.v1.OperationR\aqueries\x123\n" +
+	"\tmutations\x18\x02 \x03(\v2\x15.protoql.v1.OperationR\tmutations\"\x87\x01\n" +
+	"\tOperation\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
+	"\n" +
+	"parameters\x18\x02 \x03(\v2\x15.protoql.v1.ParameterR\n" +
+	"parameters\x12/\n" +
+	"\x06result\x18\x03 \x03(\v2\x17.protoql.v1.ResultFieldR\x06result\"5\n" +
+	"\tParameter\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"~\n" +
+	"\vResultField\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
+	"\x06parser\x18\x02 \x01(\tH\x00R\x06parser\x88\x01\x01\x123\n" +
+	"\bchildren\x18\x03 \x03(\v2\x17.protoql.v1.ResultFieldR\bchildrenB\t\n" +
+	"\a_parser\"[\n" +
+	"\x0fExecuteResponse\x12\x18\n" +
+	"\apayload\x18\x01 \x01(\fR\apayload\x12.\n" +
+	"\x13file_descriptor_set\x18\x02 \x01(\fR\x11fileDescriptorSet2M\n" +
+	"\aProtoQL\x12B\n" +
+	"\aExecute\x12\x1a.protoql.v1.ExecuteRequest\x1a\x1b.protoql.v1.ExecuteResponseBBZ@github.com/samuelfabel/protoql/internal/transport/v1;transportv1b\x06proto3"
