@@ -11,15 +11,17 @@ import (
 	"github.com/samuelfabel/protoql/internal/compile"
 	"github.com/samuelfabel/protoql/internal/engine"
 	"github.com/samuelfabel/protoql/internal/protobuf"
+	"github.com/samuelfabel/protoql/internal/request"
 	transportv1 "github.com/samuelfabel/protoql/internal/transport/v1"
 )
 
 const (
-	CodeRPCCompileFailed = "RPC_COMPILE_FAILED"
-	CodeRPCEngineFailed  = "RPC_ENGINE_FAILED"
+	CodeRPCRequestInvalid = "RPC_REQUEST_INVALID"
+	CodeRPCCompileFailed  = "RPC_COMPILE_FAILED"
+	CodeRPCEngineFailed   = "RPC_ENGINE_FAILED"
 )
 
-// Server is the POC gRPC service: GraphQL query in, projection bytes out.
+// Server is the POC gRPC service: typed request DSL in, projection bytes out.
 type Server struct {
 	transportv1.UnimplementedProtoQLServer
 	Schema string
@@ -34,15 +36,11 @@ func NewServer(source []catalog.Customer) *Server {
 	}
 }
 
-// Execute compiles the query, projects fixtures, and returns wire bytes plus descriptor set.
+// Execute compiles the request DSL, projects fixtures, and returns wire bytes plus descriptor set.
 func (s *Server) Execute(ctx context.Context, req *transportv1.ExecuteRequest) (*transportv1.ExecuteResponse, error) {
-	if req == nil || req.GetQuery() == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "%s: query is required", CodeRPCCompileFailed)
-	}
-
-	plan, err := compile.Compile(s.Schema, req.GetQuery())
+	plan, err := request.Compile(s.Schema, req)
 	if err != nil {
-		return nil, mapCompileError(err)
+		return nil, mapRequestError(err)
 	}
 
 	rows, err := engine.Project(plan, s.Source)
@@ -64,12 +62,16 @@ func (s *Server) Execute(ctx context.Context, req *transportv1.ExecuteRequest) (
 	}
 
 	return &transportv1.ExecuteResponse{
-		Payload:            payload,
+		Payload:           payload,
 		FileDescriptorSet: fds,
 	}, nil
 }
 
-func mapCompileError(err error) error {
+func mapRequestError(err error) error {
+	var rErr *request.Error
+	if errors.As(err, &rErr) {
+		return status.Errorf(codes.InvalidArgument, "%s: %s", rErr.Code, rErr.Message)
+	}
 	var cErr *compile.Error
 	if errors.As(err, &cErr) {
 		return status.Errorf(codes.InvalidArgument, "%s: %s: %s", CodeRPCCompileFailed, cErr.Code, cErr.Message)
