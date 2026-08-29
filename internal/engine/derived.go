@@ -22,6 +22,9 @@ func ageFromBirthDate(birthDate, ref time.Time) int {
 }
 
 func evalDerivedCustomer(expr string, c catalog.Customer) (any, error) {
+	if strings.HasPrefix(expr, "concat(") && strings.HasSuffix(expr, ")") {
+		return evalConcatCustomer(expr, c)
+	}
 	if strings.HasPrefix(expr, "age(") && strings.HasSuffix(expr, ")") {
 		field := strings.TrimSuffix(strings.TrimPrefix(expr, "age("), ")")
 		if field != "birthDate" {
@@ -42,4 +45,58 @@ func evalDerivedProduct(expr string, p catalog.Product) (any, error) {
 		return p.Stock > threshold, nil
 	}
 	return nil, derivedEvalError("unsupported expression: " + expr)
+}
+
+func evalConcatCustomer(expr string, c catalog.Customer) (string, error) {
+	args, err := parseConcatArgs(expr)
+	if err != nil {
+		return "", derivedEvalError(err.Error())
+	}
+	var b strings.Builder
+	for _, arg := range args {
+		if strings.HasPrefix(arg, `"`) {
+			unquoted, err := strconv.Unquote(arg)
+			if err != nil {
+				return "", derivedEvalError("invalid string literal: " + arg)
+			}
+			b.WriteString(unquoted)
+			continue
+		}
+		v, err := directString(c, arg)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(v)
+	}
+	return b.String(), nil
+}
+
+func parseConcatArgs(expr string) ([]string, error) {
+	inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(expr, "concat("), ")"))
+	if inner == "" {
+		return nil, fmt.Errorf("concat requires at least one argument")
+	}
+	var args []string
+	var cur strings.Builder
+	inString := false
+	for i := 0; i < len(inner); i++ {
+		ch := inner[i]
+		switch {
+		case ch == '"':
+			inString = !inString
+			cur.WriteByte(ch)
+		case ch == ',' && !inString:
+			args = append(args, strings.TrimSpace(cur.String()))
+			cur.Reset()
+		default:
+			cur.WriteByte(ch)
+		}
+	}
+	if inString {
+		return nil, fmt.Errorf("unterminated string in concat")
+	}
+	if tail := strings.TrimSpace(cur.String()); tail != "" {
+		args = append(args, tail)
+	}
+	return args, nil
 }
