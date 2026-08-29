@@ -11,15 +11,16 @@ If clients can define GraphQL response shape, that shape can also define a trans
 ## Pipeline (target)
 
 ```text
-GraphQL query → projection plan → in-memory evaluation → dynamic descriptor → protobuf bytes → gRPC
+Request DSL (queries/mutations + result[]) → projection plan → in-memory evaluation → dynamic descriptor → protobuf bytes → gRPC
 ```
 
 ## Current milestone
 
-gRPC transport: `Execute` RPC accepts a GraphQL query and returns projection wire bytes plus a `FileDescriptorSet` (`internal/transport`).
+gRPC transport: `Execute` accepts a **typed request DSL** (`queries[]` with `name`, `parameters`, `result[]`) and returns dynamic projection wire bytes plus a `FileDescriptorSet` (`internal/transport`, `internal/request`).
 
 ```bash
 go test ./internal/transport/...
+go test ./internal/request/...
 ```
 
 The query compiler lives in `internal/compile`.
