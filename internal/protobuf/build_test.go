@@ -148,6 +148,9 @@ func TestBuildDescriptor_nestedAndList(t *testing.T) {
 	if city == nil {
 		t.Fatal("missing city")
 	}
+	if city.Message() != nil {
+		t.Fatal("city (@source path) must be a scalar, not a nested message")
+	}
 
 	orders := desc.Fields().ByName("orders")
 	if orders == nil || !orders.IsList() {

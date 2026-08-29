@@ -112,6 +112,20 @@ func buildMessage(name string, bindings []compile.FieldBinding, all *[]*descript
 
 		switch b.Kind {
 		case compile.KindPath:
+			if len(b.Children) == 0 {
+				// @source path to a scalar leaf — encode as scalar, not nested message.
+				pbType, err := scalarProtoType(b.TypeName)
+				if err != nil {
+					return nil, err
+				}
+				msg.Field = append(msg.Field, &descriptorpb.FieldDescriptorProto{
+					Name:   strPtr(fieldName),
+					Number: int32Ptr(num),
+					Label:  labelPtr(descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL),
+					Type:   typePtr(pbType),
+				})
+				continue
+			}
 			childName := nestedMessageName(name, fieldName)
 			child, err := buildMessage(childName, b.Children, all)
 			if err != nil {

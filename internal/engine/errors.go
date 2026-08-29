@@ -7,6 +7,7 @@ const (
 	CodeTypeUnsupported          = "TYPE_UNSUPPORTED"
 	CodeDerivedEvalError         = "DERIVED_EVAL_ERROR"
 	CodeAggregateEmpty           = "AGGREGATE_EMPTY"
+	CodeEngineNullViolation      = "ENGINE_NULL_VIOLATION"
 )
 
 // Error is an engine failure with a stable error code.
@@ -36,4 +37,8 @@ func derivedEvalError(msg string) error {
 
 func aggregateEmpty(msg string) error {
 	return &Error{Code: CodeAggregateEmpty, Message: msg}
+}
+
+func nullViolation(msg string) error {
+	return &Error{Code: CodeEngineNullViolation, Message: msg}
 }

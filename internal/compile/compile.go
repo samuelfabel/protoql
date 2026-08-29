@@ -89,6 +89,7 @@ func bindField(field *ast.Field, index int) (FieldBinding, error) {
 		Index:    index,
 		Name:     name,
 		TypeName: namedType(def.Type),
+		Nullable: fieldNullable(def.Type),
 		Kind:     classify(def, len(field.SelectionSet) > 0),
 	}
 
@@ -149,6 +150,14 @@ func isList(t *ast.Type) bool {
 		t = t.Elem
 	}
 	return false
+}
+
+// fieldNullable reports whether the GraphQL field type allows null.
+func fieldNullable(t *ast.Type) bool {
+	if t == nil {
+		return false
+	}
+	return !t.NonNull
 }
 
 func namedType(t *ast.Type) string {
